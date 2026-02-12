@@ -159,6 +159,7 @@ class Renderer:
         tri_color_lights=False,
         return_rgba=False,
         camera_center=None,
+        vertex_colors: Optional[np.ndarray] = None,
     ) -> np.array:
         """
         Render meshes on input image
@@ -168,6 +169,8 @@ class Renderer:
             image (np.array): Array of (H, W, 3) containing the cropped image (unnormalized values).
             full_frame (bool): If True, then render on the full image.
             imgname (Optional[str]): Contains the original image filenamee. Used only if full_frame == True.
+            vertex_colors (Optional[np.ndarray]): Optional per-vertex BGR or BGRA colors used instead
+                of a single mesh base color.
         """
 
         if full_frame:
@@ -183,6 +186,25 @@ class Renderer:
         camera_translation = cam_t.copy()
         camera_translation[0] *= -1.0
 
+        if vertex_colors is not None:
+            vertex_colors = np.asarray(vertex_colors).astype(np.float32)
+            if vertex_colors.shape[0] != vertices.shape[0]:
+                raise ValueError(
+                    "vertex_colors must have the same number of rows as vertices"
+                )
+            if vertex_colors.shape[1] == 3:
+                alpha = np.ones((vertex_colors.shape[0], 1), dtype=np.float32)
+                per_vertex_colors = np.concatenate(
+                    [vertex_colors[:, ::-1], alpha], axis=1
+                )
+            elif vertex_colors.shape[1] == 4:
+                per_vertex_colors = vertex_colors.copy()
+                per_vertex_colors[:, :3] = per_vertex_colors[:, :3][:, ::-1]
+            else:
+                raise ValueError("vertex_colors must have 3 or 4 channels")
+        else:
+            per_vertex_colors = None
+
         material = pyrender.MetallicRoughnessMaterial(
             metallicFactor=0.0,
             alphaMode="OPAQUE",
@@ -193,23 +215,28 @@ class Renderer:
                 1.0,
             ),  # Swap RGB to BGR for pyrender
         )
-        mesh = trimesh.Trimesh(vertices.copy(), self.faces.copy())
+        mesh_trimesh = trimesh.Trimesh(
+            vertices.copy(), self.faces.copy(), vertex_colors=per_vertex_colors
+        )
 
         if side_view:
             rot = trimesh.transformations.rotation_matrix(
                 np.radians(rot_angle), [0, 1, 0]
             )
-            mesh.apply_transform(rot)
+            mesh_trimesh.apply_transform(rot)
         elif top_view:
             rot = trimesh.transformations.rotation_matrix(
                 np.radians(rot_angle), [1, 0, 0]
             )
-            mesh.apply_transform(rot)
+            mesh_trimesh.apply_transform(rot)
 
         rot = trimesh.transformations.rotation_matrix(np.radians(180), [1, 0, 0])
-        mesh.apply_transform(rot)
+        mesh_trimesh.apply_transform(rot)
 
-        mesh = pyrender.Mesh.from_trimesh(mesh, material=material)
+        if per_vertex_colors is not None:
+            mesh = pyrender.Mesh.from_trimesh(mesh_trimesh, smooth=False)
+        else:
+            mesh = pyrender.Mesh.from_trimesh(mesh_trimesh, material=material)
 
         scene = pyrender.Scene(
             bg_color=[*scene_bg_color, 0.0], ambient_light=(0.3, 0.3, 0.3)

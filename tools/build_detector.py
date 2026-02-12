@@ -126,12 +126,15 @@ def run_detectron2_vitdet(
     )
     if valid_idx.sum() == 0 and default_to_full_image:
         boxes = np.array([0, 0, width, height]).reshape(1, 4)
+        valid_scores = np.ones(np.sum(valid_idx)) * bbox_thr
     else:
         boxes = det_instances.pred_boxes.tensor[valid_idx].cpu().numpy()
+        valid_scores = det_instances.scores[valid_idx].cpu().numpy()
 
     # Sort boxes to keep a consistent output order
     sorted_indices = np.lexsort(
         (boxes[:, 3], boxes[:, 2], boxes[:, 1], boxes[:, 0])
     )  # shape: [len(boxes),]
     boxes = boxes[sorted_indices]
-    return boxes
+    valid_scores = valid_scores[sorted_indices]
+    return boxes, valid_scores

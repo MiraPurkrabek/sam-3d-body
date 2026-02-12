@@ -2,6 +2,8 @@
 
 from typing import Any, Dict, Optional, Tuple
 
+from time import time
+
 import numpy as np
 import roma
 import torch
@@ -241,6 +243,9 @@ class SAM3DBody(BaseModel):
             num_fcs=2,
             add_identity=False,
         )
+
+        self.time_accumulator = np.array([])
+        self.hand_time_accumulator = np.array([])
 
     def _get_decoder_condition(self, batch: Dict) -> Optional[torch.Tensor]:
         num_person = batch["img"].shape[1]
@@ -1213,9 +1218,15 @@ class SAM3DBody(BaseModel):
 
         height, width = img.shape[:2]
         cam_int = batch["cam_int"].clone()
+        batch_size = batch['img'].shape[1]
 
         if inference_type == "body":
+            start_time = time()
             pose_output = self.forward_step(batch, decoder_type="body")
+            end_time = time()
+            self.time_accumulator = np.append(self.time_accumulator, (end_time - start_time)/batch_size)
+            print(f"Body inference time: {(end_time - start_time)/batch_size:.4f} seconds")
+            print(f"Average body inference time: {self.time_accumulator.mean():.4f} seconds")
             return pose_output
         elif inference_type == "hand":
             pose_output = self.forward_step(batch, decoder_type="hand")
@@ -1224,7 +1235,13 @@ class SAM3DBody(BaseModel):
             ValueError("Invalid inference type: ", inference_type)
 
         # Step 1. For full-body inference, we first inference with the body decoder.
+        start_time = time()
         pose_output = self.forward_step(batch, decoder_type="body")
+        end_time = time()
+        self.time_accumulator = np.append(self.time_accumulator, (end_time - start_time)/batch_size)
+        print(f"Body inference time: {(end_time - start_time)/batch_size:.4f} seconds")
+        print(f"Average body inference time: {self.time_accumulator.mean():.4f} seconds")
+
         left_xyxy, right_xyxy = self._get_hand_box(pose_output, batch)
         ori_local_wrist_rotmat = roma.euler_to_rotmat(
             "XZY",
@@ -1244,7 +1261,13 @@ class SAM3DBody(BaseModel):
             flipped_img, transform_hand, left_xyxy, cam_int=cam_int.clone()
         )
         batch_lhand = recursive_to(batch_lhand, "cuda")
+        start_time = time()
         lhand_output = self.forward_step(batch_lhand, decoder_type="hand")
+        end_time = time()
+        self.hand_time_accumulator = np.append(self.hand_time_accumulator, (end_time - start_time)/batch_size)
+        print(f"Left hand inference time: {(end_time - start_time)/batch_size:.4f} seconds")
+        print(f"Average hand inference time: {self.hand_time_accumulator.mean():.4f} seconds")
+
 
         # Unflip output
         ## Flip scale
@@ -1280,7 +1303,12 @@ class SAM3DBody(BaseModel):
             img, transform_hand, right_xyxy, cam_int=cam_int.clone()
         )
         batch_rhand = recursive_to(batch_rhand, "cuda")
+        start_time = time()
         rhand_output = self.forward_step(batch_rhand, decoder_type="hand")
+        end_time = time()
+        self.hand_time_accumulator = np.append(self.hand_time_accumulator, (end_time - start_time)/batch_size)
+        print(f"Right hand inference time: {(end_time - start_time)/batch_size:.4f} seconds")
+        print(f"Average hand inference time: {self.hand_time_accumulator.mean():.4f} seconds")
 
         # Step 3. replace hand pose estimation from the body decoder.
         ## CRITERIA 1: LOCAL WRIST POSE DIFFERENCE
@@ -2023,3 +2051,50 @@ class SAM3DBody(BaseModel):
         ] = self.keypoint3d_posemb_linear_hand(pred_keypoints_3d)
 
         return token_embeddings, token_augment, pose_output, layer_idx
+
+    def _coco_to_prompt(self, coco_kps, batch, score_thresh=0.3):
+        # coco_kps: (B, P, 17, 3) or (P, 17, 3) with (x, y, score)
+        if coco_kps.ndim == 3:
+            coco_kps = coco_kps[None]  # assume single image batch
+        bs, num_person = coco_kps.shape[:2]
+        assert batch["img"].shape[:2] == (bs, num_person), "keypoints/person mis-match"
+        device = batch["img"].device
+        coco_to_mhr = {
+            0: 0,   1: 1,   2: 2,   3: 3,   4: 4,
+            5: 5,   6: 6,   7: 7,   8: 8,   9: 62,
+            10: 41, 11: 9, 12: 10, 13: 11, 14: 12,
+            15: 13, 16: 14,
+        }
+        affine = batch["affine_trans"].to(device)          # (B, P, 2, 3)
+        img_size = batch["img_size"].to(device)            # (B, P, 2)
+        prompts = []
+        for b in range(bs):
+            person_prompts = []
+            for pid in range(num_person):
+                kp = torch.tensor(coco_kps[b, pid], dtype=torch.float32, device=device)
+                if kp.numel() == 0:
+                    continue
+                xy1 = torch.cat([kp[:, :2], torch.ones(17, 1, device=device)], dim=-1)
+                crop_xy = xy1 @ affine[b, pid].transpose(0, 1)            # (17, 2)
+                norm_xy = crop_xy / img_size[b, pid] - 0.5                # [-0.5, 0.5]
+                for coco_idx, mhr_idx in coco_to_mhr.items():
+                    if kp[coco_idx, 2] <= score_thresh:
+                        continue
+                    point = torch.zeros(3, device=device, dtype=torch.float32)
+                    point[:2] = torch.clamp(norm_xy[coco_idx] + 0.5, 0.0, 1.0)
+                    point[2] = float(mhr_idx)
+                    person_prompts.append(point)
+                if not person_prompts:
+                    dummy = torch.zeros(3, device=device)
+                    dummy[2] = -2  # dummy prompt
+                    person_prompts.append(dummy)
+                prompts.append(torch.stack(person_prompts))
+        # pad to the same length
+        max_len = max(p.shape[0] for p in prompts)
+        padded = torch.full(
+            (len(prompts), max_len, 3), fill_value=0.0, device=device, dtype=torch.float32
+        )
+        padded[..., 2] = -2
+        for i, p in enumerate(prompts):
+            padded[i, : p.shape[0]] = p
+        return padded

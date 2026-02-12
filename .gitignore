@@ -119,3 +119,14 @@ debug/
 **/.dist_test
 sandbox*
 *.sh
+
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.mp4
+
+*.json
+*.pt
+*.ckpt
+*.pth
