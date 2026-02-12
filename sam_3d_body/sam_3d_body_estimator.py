@@ -201,20 +201,20 @@ class SAM3DBodyEstimator:
             img = load_image(img, backend="cv2", image_format="bgr")
             image_format = "bgr"
         else:
-            print("####### Please make sure the input image is in RGB format")
-            image_format = "rgb"
+            print("####### Please make sure the input image is in BGR format")
+            image_format = "bgr"
         height, width = img.shape[:2]
 
         if bboxes is not None:
             boxes = bboxes.reshape(-1, 4)
             bbox_scores = np.ones(len(boxes), dtype=np.float32)
-            print("Using provided bboxes:", boxes)
+            # print("Using provided bboxes:", boxes)
             self.is_crop = True
         elif self.detector is not None:
             if image_format == "rgb":
                 img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
                 image_format = "bgr"
-            print("Running object detector...")
+            # print("Running object detector...")
             boxes, bbox_scores = self.detector.run_human_detection(
                 img,
                 det_cat_id=det_cat_id,
@@ -222,7 +222,7 @@ class SAM3DBodyEstimator:
                 nms_thr=nms_thr,
                 default_to_full_image=False,
             )
-            print("Found boxes:", boxes)
+            # print("Found boxes:", boxes)
             self.is_crop = True
         else:
             boxes = np.array([0, 0, width, height]).reshape(1, 4)
@@ -240,7 +240,7 @@ class SAM3DBodyEstimator:
         masks_score = None
         if masks is not None:
             # Use provided masks - ensure they match the number of detected boxes
-            print(f"Using provided masks: {masks.shape}")
+            # print(f"Using provided masks: {masks.shape}")
             assert (
                 bboxes is not None
             ), "Mask-conditioned inference requires bboxes input!"
@@ -266,11 +266,11 @@ class SAM3DBodyEstimator:
         # Handle camera intrinsics
         # - either provided externally or generated via default FOV estimator
         if cam_int is not None:
-            print("Using provided camera intrinsics...")
+            # print("Using provided camera intrinsics...")
             cam_int = cam_int.to(batch["img"])
             batch["cam_int"] = cam_int.clone()
         elif self.fov_estimator is not None:
-            print("Running FOV estimator ...")
+            # print("Running FOV estimator ...")
             input_image = batch["img_ori"][0].data
             cam_int = self.fov_estimator.get_cam_intrinsics(input_image).to(
                 batch["img"]
@@ -310,7 +310,7 @@ class SAM3DBodyEstimator:
                     pose_output = outputs
 
                 # Run the keypoint prompt refinement
-                print("Refining prediction with provided keypoint prompts...")
+                # print("Refining prediction with provided keypoint prompts...")
                 # print(kp_prompt)
                 updated_pose_output, _ = self.model.run_keypoint_prompt(
                     batch, pose_output, kp_prompt

@@ -1225,8 +1225,8 @@ class SAM3DBody(BaseModel):
             pose_output = self.forward_step(batch, decoder_type="body")
             end_time = time()
             self.time_accumulator = np.append(self.time_accumulator, (end_time - start_time)/batch_size)
-            print(f"Body inference time: {(end_time - start_time)/batch_size:.4f} seconds")
-            print(f"Average body inference time: {self.time_accumulator.mean():.4f} seconds")
+            # print(f"Body inference time: {(end_time - start_time)/batch_size:.4f} seconds")
+            # print(f"Average body inference time: {self.time_accumulator.mean():.4f} seconds")
             return pose_output
         elif inference_type == "hand":
             pose_output = self.forward_step(batch, decoder_type="hand")
@@ -1239,8 +1239,8 @@ class SAM3DBody(BaseModel):
         pose_output = self.forward_step(batch, decoder_type="body")
         end_time = time()
         self.time_accumulator = np.append(self.time_accumulator, (end_time - start_time)/batch_size)
-        print(f"Body inference time: {(end_time - start_time)/batch_size:.4f} seconds")
-        print(f"Average body inference time: {self.time_accumulator.mean():.4f} seconds")
+        # print(f"Body inference time: {(end_time - start_time)/batch_size:.4f} seconds")
+        # print(f"Average body inference time: {self.time_accumulator.mean():.4f} seconds")
 
         left_xyxy, right_xyxy = self._get_hand_box(pose_output, batch)
         ori_local_wrist_rotmat = roma.euler_to_rotmat(
@@ -1265,8 +1265,8 @@ class SAM3DBody(BaseModel):
         lhand_output = self.forward_step(batch_lhand, decoder_type="hand")
         end_time = time()
         self.hand_time_accumulator = np.append(self.hand_time_accumulator, (end_time - start_time)/batch_size)
-        print(f"Left hand inference time: {(end_time - start_time)/batch_size:.4f} seconds")
-        print(f"Average hand inference time: {self.hand_time_accumulator.mean():.4f} seconds")
+        # print(f"Left hand inference time: {(end_time - start_time)/batch_size:.4f} seconds")
+        # print(f"Average hand inference time: {self.hand_time_accumulator.mean():.4f} seconds")
 
 
         # Unflip output
@@ -1307,8 +1307,8 @@ class SAM3DBody(BaseModel):
         rhand_output = self.forward_step(batch_rhand, decoder_type="hand")
         end_time = time()
         self.hand_time_accumulator = np.append(self.hand_time_accumulator, (end_time - start_time)/batch_size)
-        print(f"Right hand inference time: {(end_time - start_time)/batch_size:.4f} seconds")
-        print(f"Average hand inference time: {self.hand_time_accumulator.mean():.4f} seconds")
+        # print(f"Right hand inference time: {(end_time - start_time)/batch_size:.4f} seconds")
+        # print(f"Average hand inference time: {self.hand_time_accumulator.mean():.4f} seconds")
 
         # Step 3. replace hand pose estimation from the body decoder.
         ## CRITERIA 1: LOCAL WRIST POSE DIFFERENCE

@@ -26,7 +26,10 @@ def load_sam_3d_body(checkpoint_path: str = "", device: str = "cuda", mhr_path: 
     model_cfg.freeze()
 
     # Initialze the model
+    print(f"Initializing the model with config:...")
     model = SAM3DBody(model_cfg)
+
+    print(f"Loading model checkpoint from {checkpoint_path}...")
 
     checkpoint = torch.load(checkpoint_path, map_location="cpu", weights_only=False)
     if "state_dict" in checkpoint:
@@ -37,6 +40,7 @@ def load_sam_3d_body(checkpoint_path: str = "", device: str = "cuda", mhr_path: 
 
     model = model.to(device)
     model.eval()
+    print("Model loaded and ready for inference.")
     return model, model_cfg
 
 
