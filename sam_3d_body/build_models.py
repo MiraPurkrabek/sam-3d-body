@@ -50,6 +50,8 @@ def _hf_download(repo_id):
     return os.path.join(local_dir, "model.ckpt"), os.path.join(local_dir, "assets", "mhr_model.pt")
 
 
-def load_sam_3d_body_hf(repo_id, **kwargs):
-    ckpt_path, mhr_path = _hf_download(repo_id)
+def load_sam_3d_body_hf(repo_id, mhr_path=None, **kwargs):
+    ckpt_path, default_mhr_path = _hf_download(repo_id)
+    if mhr_path is None:
+        mhr_path = default_mhr_path
     return load_sam_3d_body(checkpoint_path=ckpt_path, mhr_path=mhr_path)
